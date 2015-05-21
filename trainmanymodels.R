@@ -10,7 +10,7 @@ for(model in models){
   }
   print(model)
   res=list()
-  m=train(formula,data=d,method=model)
+  m=train(formula,data=d,method=model,verbose=FALSE)
   res$error=min(m$results[[m$metric]])
   res$bestTune=m$bestTune
   results[length(results)+1]= list(res)

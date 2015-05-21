@@ -1,42 +1,23 @@
 
 #this function computes the pca_matrix for a given alpha parameter
-computePCA<-function(data,alpha){
-  num_col<-ncol(data)-1
-  keep<-logical(num_col)
-  
-  #select the variables
-  for (i in 1:num_col){
-    
-    m1<-glm(injured~data[[i]],data,family="binomial")
-    #first coef is always intercept
-    if(abs(coef(m1)[2])>alpha){
-      keep[i]=TRUE  
-    }
-    else{
-      
-      keep[i]=FALSE
-    }
-    
-  }
-  
-  inputs<-data[,keep]
-  inputs$injured<-NULL
-  pca_matrix<-prcomp(inputs)
+spca.computePCA<-function(input){
+
+  pca_matrix<-prcomp(as.matrix(input))
   
   return(pca_matrix)
   
 }
 
-#this function returns a new dataframe, where the covariates are the covariates
-#chosen by the selection procedure followed by supervised PCA
-computeDataForPCA<-function(data,alpha){
-  num_col<-ncol(data)-1
+#this function returns a the indices of the columns to be kept
+spca.selectInputs<-function(input,target,alpha,family=gaussian()){
+  num_col<-ncol(input)
   keep<-logical(num_col)
   
   #select the variables
   for (i in 1:num_col){
     
-    m1<-glm(injured~data[[i]],data,family="binomial")
+    m1<-glm.fit(matrix(c(rep(1,length(input[[i]])),as.numeric(as.vector(input[[i]]))),ncol=2),
+                as.vector(target),family=family)
     #first coef is always intercept
     if(abs(coef(m1)[2])>alpha){
       keep[i]=TRUE  
@@ -47,119 +28,50 @@ computeDataForPCA<-function(data,alpha){
     }
     
   }
-  
-  inputs<-data[,keep]
-  inputs$injured<-NULL
-  
-  
-  return(inputs)
+    
+  return(keep)
   
 }
 
-#tests logistic supervised PCA
-spcLogistic<-function(data,alpha,test,components){
+
+#runs glm supervised PCA and returns the predictions
+#if components is not provided, then it calculates the components on the input data
+#PCA_matrix can be computed by the function spca.computePCA
+spca.predict<-function(model,input,num_components){
   
-  num_col<-ncol(data)-1
-  keep<-logical(num_col)
   
-  #select the variables
-  for (i in 1:num_col){
-    
-    m1<-glm(injured~data[[i]],data,family="binomial")
-    #first coef is always intercept
-    if(abs(coef(m1)[2])>alpha){
-      keep[i]=TRUE  
-    }else{
-      keep[i]=FALSE
-    }
-    
+  if(is.null(pca_matrix)){
+    pca_matrix<-spca.computePCA(input,target,alpha,family)
   }
   
-  inputs<-data[,keep]
+  input<-data.frame(predict(pca_matrix,data))
   
-  if(typeof(inputs)=='double'){
-    #inputs=data.frame(inputs)
-    return(NA)
-    #names=colnames(data)
-    #colnames(inputs)=names[keep]
+  if(num_components<ncol(inputs)){
+    inputs=inputs[,1:num_components]
   }
   
-  if(ncol(inputs)==0){
-    
-    return(NA)
-  }
-  
-  inputs$injured<-NULL
-  pca_matrix<-prcomp(inputs)
-  inputs<-data.frame(predict(pca_matrix,data))
-  
-  if(components>-1 & components<=ncol(inputs)){
-    
-    inputs=inputs[,1:components]
-  }
-  inputs$injured=data$injured
- # inputs$DrillDuration=data$DrillDuration
-  
-  m1<-glm(injured~.,inputs,family="binomial")
-  
-  drill=test$DrillDuration
-  test=test[,keep]
-  test$injured<-NULL
-  test_pca=data.frame(predict(pca_matrix,test))
-  
- # test_pca$DrillDuration<-drill
-  
-  res<-predict(m1,test_pca,type="response")
+      
+  res<-predict(model,input,type="response")
   
   return(res)
   
 }
 
 #conducts logistic supervised PCA and returns the model
-spcLogisticModel<-function(data,alpha,components){
+spca.fit<-function(input,target,alpha,family=gaussian()){
+  keep=spca.selectInputs(input,target,alpha,family)
   
-  num_col<-ncol(data)-1
-  keep<-logical(num_col)
+  input=input[,keep]
+  input=apply(input,2,function(x) as.numeric(x))
   
-  #select the variables
-  for (i in 1:num_col){
-    
-    m1<-glm(injured~data[[i]],data,family="binomial")
-    #first coef is always intercept
-    if(abs(coef(m1)[2])>alpha){
-      keep[i]=TRUE  
-    }else{
-      keep[i]=FALSE
-    }
-    
-  }
+  pca_matrix<-spca.computePCA(input)
+  input=predict(pca_matrix,input)
   
-  inputs<-data[,keep]
+  m1<-glm.fit(input,target,family=family)
+  class(m1)=append(class(m1),"spca")
   
-  if(typeof(inputs)=='double'){
-    #inputs=data.frame(inputs)
-    return(NA)
-    #names=colnames(data)
-    #colnames(inputs)=names[keep]
-  }
-  
-  if(ncol(inputs)==0){
-    
-    return(NA)
-  }
-  
-  inputs$injured<-NULL
-  pca_matrix<-prcomp(inputs)
-  inputs<-data.frame(predict(pca_matrix,data))
-  
-  if(components>-1 & components<=ncol(inputs)){
-    
-    inputs=inputs[,1:components]
-  }
-  inputs$injured=data$injured
-  
-  
-  m1<-glm(injured~.,inputs,family="binomial")
+  m1$pca_matrix=pca_matrix
+  m1$keep_columns_index=keep
   
   return(m1)
   
